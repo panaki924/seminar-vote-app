@@ -108,6 +108,39 @@ export function videoSwitched(previousId: string | null, nextId: string | null):
   return previousId !== null && nextId !== null && previousId !== nextId;
 }
 
+// ---------- お知らせ(「動画が切り替わりました」など) ----------
+export type NoticeEvent =
+  /** 取得の結果、投票中の動画が変わった(previousId → next)。 */
+  | { type: "video-changed"; previousId: string | null; next: { videoId: string; name: string } | null }
+  /** 投票の送信に成功した。 */
+  | { type: "submit-succeeded" }
+  /** 「評価を変更する」を押した。 */
+  | { type: "edit-started" }
+  /** 利用者が「閉じる」を押した。 */
+  | { type: "dismissed" };
+
+/**
+ * お知らせを、出来事のあとにどうするか。
+ *  ・動画が別の動画に切り替わったら出す。投票中の動画がなくなった・最初の取得なら出さない(消す)。
+ *  ・送信に成功したとき、「評価を変更する」を押したとき、「閉じる」を押したときは消す
+ *    (古い情報が、操作のあとも残らないようにする)。
+ */
+export function nextNotice(current: string | null, event: NoticeEvent): string | null {
+  switch (event.type) {
+    case "video-changed": {
+      const nextId = event.next?.videoId ?? null;
+      if (event.previousId === nextId) return current; // 変わっていない
+      return videoSwitched(event.previousId, nextId) && event.next
+        ? `投票中の動画が「${event.next.name}」に切り替わりました。`
+        : null;
+    }
+    case "submit-succeeded":
+    case "edit-started":
+    case "dismissed":
+      return null;
+  }
+}
+
 /**
  * 下書きを、いまの動画に合わせて返す。
  * 動画が同じなら入力中の下書きをそのまま残し(ポーリングで消さない)、違えば空に戻す。

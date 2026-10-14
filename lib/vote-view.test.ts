@@ -7,6 +7,7 @@ import {
   emptyDraft,
   formatSentTime,
   isDraftComplete,
+  nextNotice,
   setScore,
   submitHint,
   toScore,
@@ -174,6 +175,57 @@ describe("動画の切り替わり", () => {
 
   it("下書きがどの動画のものか分からない(null)ときは空にする", () => {
     expect(draftForVideo({ tech: 4, impact: 2 }, null, "K0002")).toEqual(emptyDraft());
+  });
+});
+
+describe("nextNotice(お知らせを出す・消す)", () => {
+  const notice = "投票中の動画が「豊臣秀吉」に切り替わりました。";
+
+  it("動画が別の動画に切り替わったら、新しい動画の名前入りで出す", () => {
+    expect(
+      nextNotice(null, { type: "video-changed", previousId: "K0001", next: { videoId: "K0002", name: "豊臣秀吉" } }),
+    ).toBe(notice);
+  });
+
+  it("切り替わるたびに、新しい名前に置き換わる", () => {
+    expect(
+      nextNotice(notice, { type: "video-changed", previousId: "K0002", next: { videoId: "K0003", name: "徳川家康" } }),
+    ).toBe("投票中の動画が「徳川家康」に切り替わりました。");
+  });
+
+  it("最初の取得(previous なし)では出さない", () => {
+    expect(
+      nextNotice(null, { type: "video-changed", previousId: null, next: { videoId: "K0002", name: "豊臣秀吉" } }),
+    ).toBeNull();
+  });
+
+  it("投票中の動画がなくなったとき(締切など)は、古いお知らせを消す", () => {
+    expect(nextNotice(notice, { type: "video-changed", previousId: "K0002", next: null })).toBeNull();
+  });
+
+  it("動画が変わっていなければ、いまのお知らせをそのまま残す", () => {
+    expect(
+      nextNotice(notice, { type: "video-changed", previousId: "K0002", next: { videoId: "K0002", name: "豊臣秀吉" } }),
+    ).toBe(notice);
+    expect(nextNotice(null, { type: "video-changed", previousId: null, next: null })).toBeNull();
+  });
+
+  it("送信に成功したら、お知らせを消す", () => {
+    expect(nextNotice(notice, { type: "submit-succeeded" })).toBeNull();
+  });
+
+  it("「評価を変更する」を押したら、お知らせを消す", () => {
+    expect(nextNotice(notice, { type: "edit-started" })).toBeNull();
+  });
+
+  it("「閉じる」を押したら、お知らせを消す", () => {
+    expect(nextNotice(notice, { type: "dismissed" })).toBeNull();
+  });
+
+  it("お知らせが無いときに、消す操作をしても null のまま", () => {
+    for (const type of ["submit-succeeded", "edit-started", "dismissed"] as const) {
+      expect(nextNotice(null, { type })).toBeNull();
+    }
   });
 });
 

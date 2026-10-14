@@ -85,6 +85,40 @@ describe("投票欄(form)", () => {
   it("新規の投票欄には『変更をやめる』は出ない", () => {
     expect(render(form)).not.toContain("変更をやめる");
   });
+
+  // 画面の下に固定される部分(sticky-actions)の中身を取り出す
+  const stickyPart = (html: string) => {
+    const start = html.indexOf('data-testid="sticky-actions"');
+    expect(start).toBeGreaterThan(-1);
+    return { before: html.slice(0, start), sticky: html.slice(start) };
+  };
+
+  it("変更用の投票欄:『変更をやめる』は固定部分の外(投票欄の中)にあり、固定部分は送信ボタンと案内文だけ", () => {
+    const html = render(
+      { ...form, mode: "edit" },
+      { draft: { tech: 3, impact: 4 }, canSubmitNow: false, hint: "点数を変えると、送信できます" },
+    );
+    const { before, sticky } = stickyPart(html);
+    expect(before).toContain("変更をやめる"); // 投票欄の中(固定部分より前)
+    expect(sticky).not.toContain("変更をやめる"); // 固定部分には無い
+    expect(sticky).toContain("変更を送信する");
+    expect(sticky).toContain("点数を変えると、送信できます");
+    expect(count(sticky, "<button")).toBe(1); // 固定部分のボタンは送信ボタン1つだけ
+  });
+
+  it("新規の投票欄でも、固定部分のボタンは送信ボタン1つだけ", () => {
+    const { sticky } = stickyPart(render(form, { hint: "①と②の点数を選ぶと、送信できます" }));
+    expect(count(sticky, "<button")).toBe(1);
+    expect(sticky).toContain("送信する");
+  });
+
+  it("送信中は『変更をやめる』も押せない(固定部分の外にあっても)", () => {
+    const html = render(
+      { ...form, mode: "edit" },
+      { draft: { tech: 5, impact: 4 }, sending: true, canSubmitNow: false, hint: "送信しています…" },
+    );
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*>変更をやめる<\/button>/);
+  });
 });
 
 describe("自分の動画", () => {

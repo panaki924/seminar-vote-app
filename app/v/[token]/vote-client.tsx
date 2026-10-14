@@ -12,9 +12,9 @@ import {
   emptyDraft,
   formatSentTime,
   isDraftComplete,
+  nextNotice,
   setScore,
   submitHint,
-  videoSwitched,
   type Criterion,
   type Draft,
   type Score,
@@ -59,10 +59,8 @@ export function VoteClient({ token }: { token: string }) {
       setEditing(false);
       setSubmitError(null);
       setJustSentTime(null);
-      setNotice(
-        videoSwitched(previousId, nextId) && next.current
-          ? `投票中の動画が「${next.current.name}」に切り替わりました。`
-          : null,
+      setNotice((n) =>
+        nextNotice(n, { type: "video-changed", previousId, next: next.current }),
       );
     }
   }, []);
@@ -150,6 +148,7 @@ export function VoteClient({ token }: { token: string }) {
     setEditing(true);
     setJustSentTime(null);
     setSubmitError(null);
+    setNotice((n) => nextNotice(n, { type: "edit-started" })); // 古いお知らせは消す
   };
 
   const handleCancelEdit = () => {
@@ -173,6 +172,7 @@ export function VoteClient({ token }: { token: string }) {
         setSnapshot((s) => (s ? { ...s, myVote: result.vote } : s));
         setEditing(false);
         setJustSentTime(formatSentTime(result.vote.updatedAt));
+        setNotice((n) => nextNotice(n, { type: "submit-succeeded" })); // 送信後は古いお知らせを消す
         break;
       case "rejected":
         setSubmitError(result.message);
@@ -202,7 +202,7 @@ export function VoteClient({ token }: { token: string }) {
       onSubmit={() => void handleSubmit()}
       onStartEdit={handleStartEdit}
       onCancelEdit={handleCancelEdit}
-      onDismissNotice={() => setNotice(null)}
+      onDismissNotice={() => setNotice((n) => nextNotice(n, { type: "dismissed" }))}
     />
   );
 }

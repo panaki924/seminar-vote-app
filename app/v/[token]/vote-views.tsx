@@ -134,7 +134,22 @@ function FormView(props: ScreenViewProps & { screen: Extract<Screen, { kind: "fo
           {submitError}
         </p>
       ) : null}
-      <div className="sticky bottom-0 -mx-4 mt-2 border-t border-neutral-200 bg-white/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/95">
+      {/* 「変更をやめる」は投票欄の中に置く(画面の下に固定される部分を、低く保つため) */}
+      {screen.mode === "edit" ? (
+        <button
+          type="button"
+          onClick={onCancelEdit}
+          disabled={sending}
+          className="h-12 w-full rounded-xl border border-neutral-300 text-base font-medium disabled:opacity-60 dark:border-neutral-600"
+        >
+          変更をやめる
+        </button>
+      ) : null}
+      {/* 画面の下に固定される部分:送信ボタンと案内文だけ */}
+      <div
+        data-testid="sticky-actions"
+        className="sticky bottom-0 -mx-4 mt-2 border-t border-neutral-200 bg-white/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/95"
+      >
         <button
           type="button"
           onClick={onSubmit}
@@ -144,16 +159,6 @@ function FormView(props: ScreenViewProps & { screen: Extract<Screen, { kind: "fo
           {sending ? "送信中…" : screen.mode === "edit" ? "変更を送信する" : "送信する"}
         </button>
         {hint ? <p className="mt-2 text-center text-sm text-neutral-600 dark:text-neutral-400">{hint}</p> : null}
-        {screen.mode === "edit" ? (
-          <button
-            type="button"
-            onClick={onCancelEdit}
-            disabled={sending}
-            className="mt-2 h-12 w-full rounded-xl border border-neutral-300 text-base font-medium disabled:opacity-60 dark:border-neutral-600"
-          >
-            変更をやめる
-          </button>
-        ) : null}
       </div>
     </>
   );
