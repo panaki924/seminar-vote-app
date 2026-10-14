@@ -11,6 +11,8 @@ import {
   readCookie,
   SESSION_COOKIE_NAME,
   SESSION_TTL_MS,
+  serializeClearedSessionCookie,
+  serializeSessionCookie,
   sessionCookieOptions,
   verifySessionToken,
 } from "./admin-auth";
@@ -146,6 +148,22 @@ describe("Cookie の設定", () => {
   it("HttpOnly・SameSite=Strict・パス / ・8時間。本番だけ Secure", () => {
     expect(sessionCookieOptions(true)).toEqual({ httpOnly: true, sameSite: "strict", secure: true, path: "/", maxAge: 28800 });
     expect(sessionCookieOptions(false)).toMatchObject({ httpOnly: true, sameSite: "strict", secure: false });
+  });
+});
+
+describe("Set-Cookie ヘッダーの値", () => {
+  it("渡す Cookie:名前=値、パス、8時間、HttpOnly、SameSite=Strict。開発中は Secure なし", () => {
+    const header = serializeSessionCookie("tok.en.sig", false);
+    expect(header).toBe("admin_session=tok.en.sig; Path=/; Max-Age=28800; HttpOnly; SameSite=Strict");
+  });
+
+  it("本番では Secure がつく", () => {
+    expect(serializeSessionCookie("tok.en.sig", true)).toContain("; Secure");
+  });
+
+  it("消す Cookie:値が空で、Max-Age=0(ブラウザがすぐ捨てる)", () => {
+    expect(serializeClearedSessionCookie(false)).toBe("admin_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict");
+    expect(serializeClearedSessionCookie(true)).toContain("; Secure");
   });
 });
 

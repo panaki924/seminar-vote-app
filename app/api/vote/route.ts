@@ -6,6 +6,7 @@
 //
 // キャッシュ:リクエストのヘッダーを読むので、毎回リクエストのたびに実行される。
 // 念のため、どの返事にも Cache-Control: no-store を付けて、ブラウザや中継にも覚えさせない。
+import { unstable_rethrow } from "next/navigation";
 import { getVoteState, submitVote, type ApiResult } from "../../../lib/vote-api";
 import { createSupabaseVoteRepo } from "../../../lib/vote-repo";
 
@@ -19,6 +20,8 @@ function respond({ status, body }: ApiResult): Response {
 }
 
 function unexpected(error: unknown): Response {
+  // Next.js の内部の合図(ビルド中の事前生成を中断するためのもの)は、受け止めずに、そのまま投げ直す。
+  unstable_rethrow(error);
   // 環境変数の不足など、想定外の失敗。詳しい内容はログにだけ残し、利用者には見せない。
   console.error("[api/vote] 想定外のエラー:", error instanceof Error ? error.message : "unknown");
   return respond({

@@ -101,6 +101,32 @@ export function sessionCookieOptions(isProduction: boolean) {
   };
 }
 
+/** セッション Cookie を渡すための、Set-Cookie ヘッダーの値。 */
+export function serializeSessionCookie(token: string, isProduction: boolean): string {
+  const o = sessionCookieOptions(isProduction);
+  return [
+    `${SESSION_COOKIE_NAME}=${token}`,
+    `Path=${o.path}`,
+    `Max-Age=${o.maxAge}`,
+    "HttpOnly",
+    "SameSite=Strict",
+    ...(o.secure ? ["Secure"] : []),
+  ].join("; ");
+}
+
+/** セッション Cookie を消すための、Set-Cookie ヘッダーの値(ログアウト用)。 */
+export function serializeClearedSessionCookie(isProduction: boolean): string {
+  const o = sessionCookieOptions(isProduction);
+  return [
+    `${SESSION_COOKIE_NAME}=`,
+    `Path=${o.path}`,
+    "Max-Age=0",
+    "HttpOnly",
+    "SameSite=Strict",
+    ...(o.secure ? ["Secure"] : []),
+  ].join("; ");
+}
+
 // ---------- 3. POST の Origin の確認 ----------
 const firstValue = (header: string | null) => (header ?? "").split(",")[0].trim().toLowerCase();
 
