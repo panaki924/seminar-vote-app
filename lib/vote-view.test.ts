@@ -8,6 +8,7 @@ import {
   formatSentTime,
   isDraftComplete,
   setScore,
+  submitHint,
   toScore,
   videoSwitched,
   type VoteSnapshot,
@@ -127,6 +128,25 @@ describe("canSubmit(送信ボタンを押せるか)", () => {
 
   it("変更中に片方だけ選び直した(もう片方は前の点数)状態でも押せる", () => {
     expect(canSubmit({ ...draftFromVote(vote), impact: 1 }, vote, false)).toBe(true);
+  });
+});
+
+describe("submitHint(送信ボタンの案内文)", () => {
+  it("何も選んでいなければ、①と②を促す", () => {
+    expect(submitHint(emptyDraft(), null, false)).toContain("①と②");
+  });
+  it("片方だけ選んでいれば、足りない方を促す", () => {
+    expect(submitHint({ tech: 3, impact: null }, null, false)).toContain("②");
+    expect(submitHint({ tech: null, impact: 3 }, null, false)).toContain("①");
+  });
+  it("押せるときは案内なし(null)", () => {
+    expect(submitHint({ tech: 3, impact: 4 }, null, false)).toBeNull();
+  });
+  it("送信済みと同じ内容なら、点数を変えるよう促す", () => {
+    expect(submitHint({ tech: 3, impact: 4 }, vote, false)).toContain("変える");
+  });
+  it("送信中は、その旨を出す", () => {
+    expect(submitHint({ tech: 3, impact: 4 }, null, true)).toContain("送信しています");
   });
 });
 

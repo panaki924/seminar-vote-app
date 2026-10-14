@@ -88,6 +88,20 @@ export function canSubmit(
   return draft.tech !== existing.tech || draft.impact !== existing.impact;
 }
 
+/** 送信ボタンの下に出す案内文。押せるときは null。 */
+export function submitHint(
+  draft: Draft,
+  existing: { tech: number; impact: number } | null,
+  sending: boolean,
+): string | null {
+  if (sending) return "送信しています…";
+  if (!isDraftComplete(draft)) {
+    if (draft.tech === null && draft.impact === null) return "①と②の点数を選ぶと、送信できます";
+    return draft.tech === null ? "①の点数を選ぶと、送信できます" : "②の点数を選ぶと、送信できます";
+  }
+  return canSubmit(draft, existing, false) ? null : "点数を変えると、送信できます";
+}
+
 // ---------- 3. 動画が切り替わったとき ----------
 /** 投票中の動画が、別の動画に切り替わったか(どちらも動画があり、IDが違う)。 */
 export function videoSwitched(previousId: string | null, nextId: string | null): boolean {
