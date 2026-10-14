@@ -107,4 +107,67 @@ npm test
 
 ---
 
+## 段階2:データベースの設計図(SQL)を作る【まだ実行していない】
+
+### 作ったもの
+- `supabase/schema.sql`:テーブル 4 つ(members / videos / votes / app_state)、制約、RLS の設定。
+- `supabase/seed.sql`:初期データ(名簿 10 名、動画 10 本、アプリ状態 1 行)。
+- `supabase/verify.sql`:わざと不正なデータを入れて、DB が弾くかを確かめる検証。終わったら全部取り消す。
+
+### 使った技術
+- PostgreSQL(Supabase の中身のデータベース)と、その操作言語 SQL
+
+### なぜそうしたか
+- **ルールを DB にも書いた**:画面や API のチェックをすり抜けても、DB が最後に止める。自己投票・点数の範囲・open は 1 本だけ、はすべて DB の制約にした。
+- **トークンは DB が作る**:`gen_random_uuid()` を 2 つつなげた 64 文字。値は SQL ファイルのどこにも書かれないので、Git にも会話にも出ない。
+- **名簿は seed.sql だけで差し替え**:名前や ID はコードに書かない。動画の行は名簿から自動で作る。
+- **RLS を有効にし、ポリシーは作らない**:公開キーでは何も読み書きできない。さらに保険として、公開キー系の役割(anon / authenticated)の権限そのものも取り上げた。
+- **begin ... commit で囲んだ**:途中で失敗したら、全部なかったことになる。中途半端な状態が残らない。
+- **verify.sql は begin ... rollback で囲んだ**:検証用データは最後に取り消されるので、本番データを汚さない。
+
+### 確認方法
+(実行は承認後。手順は下の「Supabase の画面での実行手順」を参照)
+1. `schema.sql` を実行 → 「Success. No rows returned」と出る。
+2. `seed.sql` を実行 → 表に `members=10, videos=10, min_token_length=64, reveal_stage=0` と出る。
+3. `verify.sql` を実行 → 赤いエラーが出ず、最後の表で `verify_leftover=0, votes=0` と出る。
+
+実行前の確認として、使い捨てのメモリ上の PostgreSQL(PGlite)で 3 つのファイルを通し、すべて成功することを確かめた。また、制約をわざと外した状態で verify.sql を流すと、`NG:` で止まる(検証が効いている)ことも確かめた。ただし本物の Supabase ではまだ実行していない。
+
+### テーブルと制約の対応表
+| テーブル | 制約 | 守っていること |
+|---|---|---|
+| members | 主キー id、token は一意、token は 32 文字以上 | 学籍番号の重複なし、トークンの重複・短すぎる値なし |
+| videos | 主キー member_id、status は 4 種類のみ、部分ユニークインデックス | 1 人 1 本、不正な状態なし、open は同時に 1 本 |
+| votes | 主キー (voter_id, target_id)、voter_id <> target_id、tech / impact は 1〜5 | 1 人 1 動画 1 票(再投票は上書き)、自己投票なし、点数の範囲 |
+| app_state | id = 1 のみ、reveal_stage は 0〜3 | 行は最大 1 つ、発表段階の範囲 |
+
+なお「投票を受け付けるのは status='open' の動画だけ」は、DB ではなく API(段階4)で守る。
+
+### Supabase の画面での実行手順(画面の名称は変更されることがある)
+1. ブラウザで supabase.com を開き、「Start your project」からサインイン(GitHub またはメール)。
+2. 「New project」を押す。Organization を選び、Name に `seminar-vote` などを入力。
+3. 「Database Password」は「Generate a password」で作り、パスワード管理ツールに保存する(会話には貼らない)。
+4. 「Region」は「Northeast Asia (Tokyo)」を選び、「Create new project」を押す。数分待つ。
+5. 左のメニューの「SQL Editor」(`>_` のアイコン)を開き、「New query」を押す。
+6. VS Code などで `supabase/schema.sql` を開いて全文コピー → エディタに貼り付け → 右下の「Run」(または Ctrl+Enter)。「Success. No rows returned」と出れば成功。
+7. 左のメニューの「Table Editor」を開き、4 つのテーブルがあることを確認する。
+8. 「SQL Editor」で「New query」→ `seed.sql` を貼り付けて「Run」。結果の表に `members=10` などが出れば成功。
+9. もう一度「New query」→ `verify.sql` を貼り付けて「Run」。赤いエラーが出ず、最後の表で `verify_leftover=0` なら合格。`NG:` で始まるエラーが出たら不合格。
+10. 失敗したら、画面のエラーメッセージをそのまま教える(トークンやキーは貼らない)。
+
+### 初出の専門用語と一言解説
+- **テーブル**:表のこと。1 行が 1 件のデータ。
+- **主キー(PRIMARY KEY)**:1 行を見分けるための列。重複できない。
+- **外部キー(REFERENCES)**:「別の表に実在するものだけ入れてよい」という約束。
+- **CHECK 制約**:入れてよい値の条件。改札機のようなもの。
+- **部分ユニークインデックス**:「条件に合う行の中だけ」重複を禁止する仕組み。ここでは「open の行は 1 本だけ」。
+- **RLS(行レベルセキュリティ)**:行ごとに読み書きを制限する鍵。ポリシーが無いと誰も通れない。
+- **ポリシー**:RLS の「通してよい条件」の書き方。今回は作らない。
+- **service_role / anon**:Supabase の役割。service_role はサーバー専用の万能キー、anon は公開キーで権限が小さい。
+- **トランザクション(begin / commit / rollback)**:複数の操作を「全部成功か、全部なかったことか」にまとめる仕組み。rollback は取り消し。
+- **gen_random_uuid()**:推測できないランダムな ID を作る DB の関数。
+- **シード(seed)**:最初に入れておく初期データ。
+
+---
+
 TODO:公開前(段階10)に npm audit の高severity 5件を確認する(npm audit fix --force は使わない)
