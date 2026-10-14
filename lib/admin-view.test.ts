@@ -6,6 +6,9 @@ import {
   advanceButton,
   canConfirmReset,
   formatWait,
+  lockNotice,
+  namesShownAfterStatus,
+  notVotedDisplay,
   resetSummary,
   revealControls,
   statusLabel,
@@ -62,6 +65,112 @@ describe("voteProgress(投票の進み具合)", () => {
 
   it("割合は 100% を超えない", () => {
     expect(voteProgress(12, 9).percent).toBe(100);
+  });
+});
+
+describe("notVotedDisplay(まだ投票していない人の見せ方)", () => {
+  const names = ["徳川家康", "伊達政宗"];
+
+  it("非表示のとき:人数だけで、名前は含まれない", () => {
+    const d = notVotedDisplay(names, false);
+    expect(d).toEqual({ text: "まだ投票していない人:2 人(名前は非表示)", canToggle: true, toggleLabel: "名前を表示する" });
+    expect(d.text).not.toContain("徳川家康");
+  });
+
+  it("表示のとき:名前を「、」でつなぐ。切替の文言は『名前を隠す』", () => {
+    expect(notVotedDisplay(names, true)).toEqual({
+      text: "まだ投票していない人:徳川家康、伊達政宗",
+      canToggle: true,
+      toggleLabel: "名前を隠す",
+    });
+  });
+
+  it("全員が投票済みなら、切替は不要(表示・非表示のどちらでも同じ)", () => {
+    for (const shown of [true, false]) {
+      expect(notVotedDisplay([], shown)).toEqual({ text: "全員が投票済みです。", canToggle: false, toggleLabel: "" });
+    }
+  });
+});
+
+describe("lockNotice(ログインが止められているときの案内。残り時間は1か所だけ)", () => {
+  const ipMessage = "ログインの失敗が続いたため、しばらく受け付けられません。約 9 分後に、もう一度お試しください。";
+  const globalMessage =
+    "短い間にログインの失敗が多かったため、安全のため、ログインを一時的に止めています。約 10 分後に、もう一度お試しください。";
+  // 残り時間(「約N分」「N秒」)の表記が、いくつ入っているか
+  const timeMentions = (text: string) => (text.match(/(約\s*\d+\s*分|\d+\s*秒)/g) ?? []).length;
+
+  it("サーバーの文の『約 N 分後に、もう一度お試しください。』を取り除き、残り時間を、1か所だけに入れる(IP ごとの停止)", () => {
+    const text = lockNotice(ipMessage, 540);
+    expect(text).toBe("ログインの失敗が続いたため、しばらく受け付けられません。 あと約9分ほど、お待ちください。");
+    expect(timeMentions(text)).toBe(1);
+    expect(text).not.toContain("もう一度お試しください");
+  });
+
+  it("全体の停止の文でも、同じ(残り時間は1か所だけ)", () => {
+    const text = lockNotice(globalMessage, 600);
+    expect(text).toContain("ログインを一時的に止めています。");
+    expect(text).toContain("あと約10分ほど、お待ちください。");
+    expect(timeMentions(text)).toBe(1);
+  });
+
+  it("残り時間が減ると、案内文の中の時間だけが変わる(60秒未満は『N秒』)", () => {
+    expect(lockNotice(ipMessage, 125)).toContain("あと約3分ほど");
+    expect(lockNotice(ipMessage, 59)).toContain("あと59秒ほど");
+    expect(timeMentions(lockNotice(ipMessage, 59))).toBe(1);
+    expect(lockNotice(ipMessage, 1)).toContain("あと1秒ほど");
+  });
+
+  it("サーバーの文に『約 N 分後に』が無いときも、残り時間を1か所だけ足す", () => {
+    const text = lockNotice("ログインを止めています。", 300);
+    expect(text).toBe("ログインを止めています。 あと約5分ほど、お待ちください。");
+    expect(timeMentions(text)).toBe(1);
+  });
+
+  it("サーバーの文が、残り時間の文だけのときは、理由なしで残り時間だけを出す", () => {
+    expect(lockNotice("約 9 分後に、もう一度お試しください。", 540)).toBe("あと約9分ほど、お待ちください。");
+  });
+
+  it("半角・全角の空白や、句点の有無が違っても取り除ける", () => {
+    expect(lockNotice("止めています。約9分後にもう一度お試しください", 540)).toBe("止めています。 あと約9分ほど、お待ちください。");
+  });
+});
+
+describe("namesShownAfterStatus(名前の表示を、動画が変わったら非表示に戻す)", () => {
+  it("同じ動画が投票中のままなら、表示の記憶を残す", () => {
+    expect(namesShownAfterStatus("K0002", "K0002", "K0002")).toBe("K0002");
+    expect(namesShownAfterStatus(null, "K0002", "K0002")).toBeNull();
+  });
+
+  it("別の動画に変わったら、記憶を消す(非表示に戻る)", () => {
+    expect(namesShownAfterStatus("K0002", "K0002", "K0003")).toBeNull();
+  });
+
+  it("投票中の動画がなくなったら(締切・リセット)、記憶を消す", () => {
+    expect(namesShownAfterStatus("K0002", "K0002", null)).toBeNull();
+  });
+
+  it("【見つけた不具合の再現】K0002 で表示 → 投票中でなくなる → K0002 がまた投票中になっても、名前は勝手に出ない", () => {
+    let shown: string | null = "K0002";
+    let previous: string | null = "K0002";
+    for (const next of [null, "K0002"] as const) {
+      shown = namesShownAfterStatus(shown, previous, next);
+      previous = next;
+    }
+    expect(shown).toBeNull();
+  });
+
+  it("【同じ】K0002 → K0003 → K0002 と変わっても、戻ったときは非表示", () => {
+    let shown: string | null = "K0002";
+    let previous: string | null = "K0002";
+    for (const next of ["K0003", "K0002"] as const) {
+      shown = namesShownAfterStatus(shown, previous, next);
+      previous = next;
+    }
+    expect(shown).toBeNull();
+  });
+
+  it("最初の取得(前回は投票中なし)で、投票中の動画が見つかっても、表示の記憶は無いまま", () => {
+    expect(namesShownAfterStatus(null, null, "K0002")).toBeNull();
   });
 });
 

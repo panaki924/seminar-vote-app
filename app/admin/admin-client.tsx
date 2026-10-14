@@ -13,7 +13,15 @@ import {
   logoutRequest,
   resetEverythingRequest,
 } from "../../lib/admin-client-api";
-import { actionResultMessage, canConfirmReset, formatWait, type AdminStatus } from "../../lib/admin-view";
+import { autoDismissEffect } from "../../lib/auto-dismiss";
+import {
+  actionResultMessage,
+  canConfirmReset,
+  feedbackAutoDismissMs,
+  lockNotice,
+  namesShownAfterStatus,
+  type AdminStatus,
+} from "../../lib/admin-view";
 import { AdminView, type Feedback, type LoginViewState, type ResetDialogState } from "./admin-views";
 
 const POLL_INTERVAL_MS = 2500; // 通常の取得間隔(0〜0.5秒のばらつきを足す)
@@ -32,6 +40,9 @@ export function AdminClient() {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [resetDialog, setResetDialog] = useState<ResetDialogState>(emptyReset);
+  // 「まだ投票していない人」の名前を表示している動画の ID。null なら、非表示(初期値)。
+  // 投票中の動画が変わると、ID が合わなくなり、自動で非表示に戻る(映したままで、次の動画の名前が出ないように)。
+  const [namesShownFor, setNamesShownFor] = useState<string | null>(null);
 
   // ログインの入力欄
   const [password, setPassword] = useState("");
@@ -45,6 +56,7 @@ export function AdminClient() {
   const mutationVersionRef = useRef(0);
   const pollNowRef = useRef<(() => void) | null>(null);
   // 取得の途中で「いまの画面の段階」を読むための控え(取得の関数の中では、state が古くなるため)
+  const openIdRef = useRef<string | null>(null); // 前回の取得で、投票中だった動画の ID
   const phaseRef = useRef<Phase>("checking");
   useEffect(() => {
     phaseRef.current = phase;
@@ -52,6 +64,8 @@ export function AdminClient() {
 
   const returnToLogin = useCallback((notice: string | null) => {
     setStatus(null);
+    setNamesShownFor(null); // ログアウト・期限切れのあとは、名前を非表示に戻す
+    openIdRef.current = null;
     setPhase("login");
     setLoginNotice(notice);
     setLoginError(null);
@@ -87,6 +101,11 @@ export function AdminClient() {
           setConnectionLost(false);
           // 操作の前後に始まった取得の結果は捨てる(次の取得で最新になる)
           if (versionAtStart === mutationVersionRef.current) {
+            // 投票中の動画が変わったら、名前の表示を非表示に戻す(同じ動画がまた投票中になっても、勝手に出ない)
+            const nextOpenId = result.data.open?.memberId ?? null;
+            const previousOpenId = openIdRef.current;
+            openIdRef.current = nextOpenId;
+            setNamesShownFor((shown) => namesShownAfterStatus(shown, previousOpenId, nextOpenId));
             setStatus(result.data);
             setPhase("dashboard");
           }
@@ -131,6 +150,13 @@ export function AdminClient() {
       pollNowRef.current = null;
     };
   }, [polling, returnToLogin]);
+
+  // ---------- 成功のお知らせは、5秒後に自動で消す(「閉じる」も残す) ----------
+  // お知らせが入れ替わったとき・この画面が閉じられたときは、後始末の関数が、タイマーを止める。
+  useEffect(
+    () => autoDismissEffect(feedback, feedback ? feedbackAutoDismissMs(feedback.tone) : null, setFeedback),
+    [feedback],
+  );
 
   // ---------- ログインの待ち時間の表示(1秒ずつ減らす) ----------
   useEffect(() => {
@@ -248,11 +274,15 @@ export function AdminClient() {
     }
   };
 
+  const openMemberId = status?.open?.memberId ?? null;
+  const showNotVotedNames = openMemberId !== null && namesShownFor === openMemberId;
+
   const login: LoginViewState = {
     password,
     submitting: loginSubmitting,
     error: loginError,
-    locked: lockRemaining !== null && lockMessage ? `${lockMessage} 残り時間:${formatWait(lockRemaining)}` : null,
+    // 残り時間は、案内文の中の1か所だけに出す(サーバーの文の「約 N 分後に」は取り除く)
+    locked: lockRemaining !== null && lockMessage ? lockNotice(lockMessage, lockRemaining) : null,
     notice: loginNotice,
   };
 
@@ -265,6 +295,8 @@ export function AdminClient() {
       feedback={feedback}
       connectionLost={connectionLost}
       resetDialog={resetDialog}
+      showNotVotedNames={showNotVotedNames}
+      onToggleNotVotedNames={() => setNamesShownFor(showNotVotedNames ? null : openMemberId)}
       onPasswordChange={(value) => {
         setPassword(value);
         setLoginError(null);

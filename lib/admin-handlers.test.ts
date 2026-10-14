@@ -18,6 +18,7 @@ import {
   type AdminDeps,
 } from "./admin-handlers";
 import type { AdminRepo } from "./admin-service";
+import { lockNotice } from "./admin-view";
 
 // テスト専用のダミーのパスワード(本物ではない)
 const PASSWORD = "dummy-admin-pass-for-tests-123";
@@ -156,6 +157,31 @@ describe("handleLogin", () => {
     expect(res.status).toBe(429);
     expect(String((await json(res)).error)).toContain("一時的に止めて");
     expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("本物のサーバーの停止メッセージ(IP ごと・全体)から、画面の案内文を作ると、残り時間が1か所だけになる", async () => {
+    const timeMentions = (text: string) => (text.match(/(約\s*\d+\s*分|\d+\s*秒)/g) ?? []).length;
+
+    // IP ごとの停止
+    const ipDeps = makeDeps().deps;
+    const ip = { "x-forwarded-for": "203.0.113.5" };
+    for (let i = 0; i < 5; i++) await handleLogin(post("/api/admin/login", { password: "wrong-password-xyz" }, ip), ipDeps);
+    const ipBlocked = await handleLogin(post("/api/admin/login", { password: PASSWORD }, ip), ipDeps);
+    const ipMessage = String((await json(ipBlocked)).error);
+    expect(timeMentions(ipMessage)).toBe(1); // サーバーの文には、時間が1つ入っている(約 N 分後に)
+    const ipNotice = lockNotice(ipMessage, Number(ipBlocked.headers.get("retry-after")));
+    expect(timeMentions(ipNotice)).toBe(1); // 画面の案内文でも、1つだけ(残り時間)
+    expect(ipNotice).toContain("ほど、お待ちください。");
+
+    // 全体の停止
+    const globalDeps = makeDeps().deps;
+    for (let i = 0; i < 30; i++) {
+      await handleLogin(post("/api/admin/login", { password: "wrong-password-xyz" }, { "x-forwarded-for": `10.0.0.${i}` }), globalDeps);
+    }
+    const globalBlocked = await handleLogin(post("/api/admin/login", { password: PASSWORD }, { "x-forwarded-for": "192.0.2.77" }), globalDeps);
+    const globalNotice = lockNotice(String((await json(globalBlocked)).error), Number(globalBlocked.headers.get("retry-after")));
+    expect(timeMentions(globalNotice)).toBe(1);
+    expect(globalNotice).toContain("一時的に止めています");
   });
 
   it("止めている間は、パスワードの照合もしない(待ち時間も増やさない)", async () => {

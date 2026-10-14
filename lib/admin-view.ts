@@ -69,6 +69,33 @@ export function voteProgress(voteCount: number, eligibleCount: number): { text: 
   };
 }
 
+/**
+ * 「まだ投票していない人」の見せ方。
+ * 名前は、表示にしたときだけ画面に描く(非表示のときは、人数だけ。映したときに、名前が全員に見えないように)。
+ */
+export function notVotedDisplay(
+  names: readonly string[],
+  shown: boolean,
+): { text: string; canToggle: boolean; toggleLabel: string } {
+  if (names.length === 0) return { text: "全員が投票済みです。", canToggle: false, toggleLabel: "" };
+  return shown
+    ? { text: `まだ投票していない人:${names.join("、")}`, canToggle: true, toggleLabel: "名前を隠す" }
+    : { text: `まだ投票していない人:${names.length} 人(名前は非表示)`, canToggle: true, toggleLabel: "名前を表示する" };
+}
+
+/**
+ * 取得した状態に合わせて、「名前を表示している動画」の記憶を更新する。
+ * 投票中の動画が変わったら(別の動画になった・投票中の動画がなくなった)、記憶を消して、非表示に戻す。
+ * 一度消したら、同じ動画がまた投票中になっても、名前は勝手に出ない(映したまま、名前が再び出ないように)。
+ */
+export function namesShownAfterStatus(
+  shownFor: string | null,
+  previousOpenId: string | null,
+  nextOpenId: string | null,
+): string | null {
+  return previousOpenId === nextOpenId ? shownFor : null;
+}
+
 // ---------- 3. 状態・操作の見せ方 ----------
 export type Tone = "primary" | "neutral" | "danger";
 
@@ -154,4 +181,23 @@ export function resetSummary(totals: { votes: number }): string[] {
 export function formatWait(seconds: number): string {
   const s = Math.max(0, Math.ceil(seconds));
   return s < 60 ? `${s}秒` : `約${Math.ceil(s / 60)}分`;
+}
+
+/**
+ * ログインが止められているときの案内文。残り時間は、この文の中の1か所だけに出す。
+ * サーバーの文の最後にある「約 N 分後に、もう一度お試しください。」は、取り除く
+ * (画面は残り時間を1秒ずつ数えているので、サーバーが返した時点の「約 N 分」と重なってしまうため)。
+ */
+export function lockNotice(serverMessage: string, remainingSec: number): string {
+  const reason = serverMessage.replace(/\s*約\s*\d+\s*分後に、?もう一度お試しください。?\s*$/, "").trim();
+  const wait = `あと${formatWait(remainingSec)}ほど、お待ちください。`;
+  return reason ? `${reason} ${wait}` : wait;
+}
+
+// ---------- 7. お知らせの自動消去 ----------
+export const SUCCESS_AUTO_DISMISS_MS = 5000;
+
+/** お知らせが、何ミリ秒後に自動で消えるか。成功だけが消える。失敗・注意(警告つき)は、読み終わるまで残す。 */
+export function feedbackAutoDismissMs(tone: "success" | "error" | "info"): number | null {
+  return tone === "success" ? SUCCESS_AUTO_DISMISS_MS : null;
 }

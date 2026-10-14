@@ -7,6 +7,7 @@ import {
   actionTone,
   advanceButton,
   canConfirmReset,
+  notVotedDisplay,
   resetSummary,
   RESET_PHRASE,
   revealControls,
@@ -40,6 +41,9 @@ export type AdminViewProps = {
   feedback: Feedback | null;
   connectionLost: boolean;
   resetDialog: ResetDialogState;
+  /** 「まだ投票していない人」の名前を表示しているか(初期値は非表示) */
+  showNotVotedNames: boolean;
+  onToggleNotVotedNames: () => void;
   onPasswordChange: (value: string) => void;
   onLogin: () => void;
   onLogout: () => void;
@@ -120,10 +124,23 @@ function LoginForm({ login, onPasswordChange, onLogin }: Pick<AdminViewProps, "l
 }
 
 // ---------- 投票中の動画 ----------
-function OpenVideoCard({ status, busy, onAdvance }: { status: AdminStatus; busy: boolean; onAdvance: () => void }) {
+function OpenVideoCard({
+  status,
+  busy,
+  showNotVotedNames,
+  onAdvance,
+  onToggleNotVotedNames,
+}: {
+  status: AdminStatus;
+  busy: boolean;
+  showNotVotedNames: boolean;
+  onAdvance: () => void;
+  onToggleNotVotedNames: () => void;
+}) {
   const open = status.open;
   const advance = advanceButton(status.advance);
   const progress = open ? voteProgress(open.voteCount, open.eligibleCount) : null;
+  const notVoted = notVotedDisplay(open ? open.notVotedNames : [], showNotVotedNames);
   return (
     <section className={card} aria-label="投票中の動画">
       <h2 className="text-sm font-medium text-indigo-700 dark:text-indigo-300">投票中の動画</h2>
@@ -146,12 +163,25 @@ function OpenVideoCard({ status, busy, onAdvance }: { status: AdminStatus; busy:
                 style={{ width: `${progress.percent}%` }}
               />
             </div>
-            {open.notVotedNames.length > 0 ? (
-              <p className="mt-2 text-sm text-neutral-700 dark:text-neutral-300" data-testid="not-voted">
-                まだ投票していない人:{open.notVotedNames.join("、")}
-              </p>
+            {notVoted.canToggle ? (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <p className="text-sm text-neutral-700 dark:text-neutral-300" data-testid="not-voted">
+                  {notVoted.text}
+                </p>
+                <button
+                  type="button"
+                  data-testid="toggle-not-voted"
+                  onClick={onToggleNotVotedNames}
+                  aria-pressed={showNotVotedNames}
+                  className="min-h-10 rounded-lg px-2 text-sm font-semibold text-indigo-700 underline dark:text-indigo-300"
+                >
+                  {notVoted.toggleLabel}
+                </button>
+              </div>
             ) : (
-              <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-300">全員が投票済みです。</p>
+              <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-300" data-testid="not-voted">
+                {notVoted.text}
+              </p>
             )}
           </div>
         </>
@@ -406,7 +436,13 @@ export function AdminView(props: AdminViewProps) {
             </button>
           </div>
         ) : null}
-        <OpenVideoCard status={status} busy={props.busy} onAdvance={props.onAdvance} />
+        <OpenVideoCard
+          status={status}
+          busy={props.busy}
+          showNotVotedNames={props.showNotVotedNames}
+          onAdvance={props.onAdvance}
+          onToggleNotVotedNames={props.onToggleNotVotedNames}
+        />
         <VideoList status={status} busy={props.busy} onAction={props.onVideoAction} />
         <RevealPanel status={status} busy={props.busy} onReveal={props.onReveal} />
         <DangerZone status={status} busy={props.busy} onOpenReset={props.onOpenReset} />

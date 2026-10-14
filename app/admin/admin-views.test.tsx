@@ -41,6 +41,8 @@ function render(over: Partial<AdminViewProps> = {}) {
     feedback: null,
     connectionLost: false,
     resetDialog: { open: false, typed: "", submitting: false, error: null },
+    showNotVotedNames: false, // 初期値は非表示
+    onToggleNotVotedNames: vi.fn(),
     onPasswordChange: vi.fn(),
     onLogin: vi.fn(),
     onLogout: vi.fn(),
@@ -118,18 +120,47 @@ describe("確認中・ログイン", () => {
 });
 
 describe("管理画面:投票中の動画", () => {
-  it("名前、投票済み人数、進み具合のバー、まだ投票していない人の名前を出す", () => {
+  // 「投票中の動画」の欄(まだ投票していない人の表示を含む部分)だけを取り出す
+  const openCard = (html: string) => {
+    const start = html.indexOf('aria-label="投票中の動画"');
+    const end = html.indexOf('aria-label="動画の一覧"');
+    return html.slice(start, end);
+  };
+
+  it("名前、投票済み人数、進み具合のバーを出す", () => {
     const html = render();
     expect(html).toContain("投票中の動画");
     expect(html).toMatch(/data-testid="open-progress-text">投票済み 3 \/ 9 人</);
     expect(html).toContain('aria-valuenow="33"');
-    expect(html).toMatch(/data-testid="not-voted">まだ投票していない人:徳川家康、伊達政宗</);
   });
 
-  it("全員が投票済みなら、その旨を出す", () => {
+  it("まだ投票していない人:初期値は非表示。人数だけ出し、名前は画面に描かない", () => {
+    const card = openCard(render());
+    const line = /data-testid="not-voted">([^<]*)</.exec(card)?.[1] ?? "";
+    expect(line).toBe("まだ投票していない人:2 人(名前は非表示)");
+    expect(line).not.toContain("徳川家康");
+    expect(line).not.toContain("伊達政宗");
+    // 「伊達政宗」は、まだ投票していない人にだけ入っている名前。欄のどこにも描かれていない
+    expect(card).not.toContain("伊達政宗");
+    expect(card).toContain(">名前を表示する<");
+  });
+
+  it("まだ投票していない人:表示にすると、名前が出て、ボタンは『名前を隠す』になる", () => {
+    const card = openCard(render({ showNotVotedNames: true }));
+    expect(card).toContain("まだ投票していない人:徳川家康、伊達政宗");
+    expect(card).toContain(">名前を隠す<");
+    expect(card).toContain('aria-pressed="true"');
+  });
+
+  it("切替のボタンは、押せる(操作の送信中でも、画面の見せ方だけなので押せる)", () => {
+    expect(isDisabled(render({ busy: true }), "toggle-not-voted")).toBe(false);
+  });
+
+  it("全員が投票済みなら、その旨を出す(切替のボタンは出さない)", () => {
     const html = render({ status: status({ open: { memberId: "K0002", name: "豊臣秀吉", nameEn: "x", voteCount: 9, eligibleCount: 9, notVotedNames: [] } }) });
     expect(html).toContain("全員が投票済みです");
     expect(html).not.toContain("まだ投票していない人");
+    expect(html).not.toContain("toggle-not-voted");
   });
 
   it("投票中の動画が無いときは、その旨と、最初の動画を開始するボタン", () => {
