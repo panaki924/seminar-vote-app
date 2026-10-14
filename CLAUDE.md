@@ -27,7 +27,7 @@ open にできる動画は同時に1本だけ。この制約はDB側(部分ユ�
 - Supabase(PostgreSQL)。ブラウザからDBへ直接アクセスしない。すべてサーバー側(Route Handler)を経由する。
 - DBは、既存のSupabaseプロジェクト(減量アプリ側)の中の専用スキーマ seminar_vote を使う。
 - 全テーブルでRLSを有効にし、ポリシーは作らない(公開キーでは読み書きできない状態にする)。
-- 環境変数:SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / ADMIN_PASSWORD。.env.local に置き、Gitに含めない(.gitignoreを確認する)。
+- 環境変数:SUPABASE_URL / SUPABASE_SECRET_KEY(sb_secret_ 形式) / ADMIN_PASSWORD。.env.local に置き、Gitに含めない(.gitignoreを確認する)。
 - Vercel にデプロイする。
 - 画面の更新は2〜3秒おきのポーリングでよい。
 - UIは日本語。スマホ優先のレスポンシブ。
@@ -58,7 +58,7 @@ app_state(id=1, reveal_stage 0〜3)
 # コード方針
 - 順位計算は純粋関数 lib/ranking.ts に切り出し、ユニットテスト(Vitest)を必ず書く。
 - テスト項目:自己投票の除外 / 欠席者がいても平均で順位が正しい / not_shown除外 / 同点処理(同順位を含む) / 再投票の上書き
-- Supabaseの秘密キー(service_role)はサーバー側のみで使い、ブラウザに出さない。
+- Supabaseの秘密キー(SUPABASE_SECRET_KEY)はサーバー側のみで使い、ブラウザに出さない。
 - 秘密情報(キー・パスワード・トークン)を会話やコミットに出力しない。
 
 # 作業ルール

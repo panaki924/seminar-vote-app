@@ -199,7 +199,7 @@ Supabase の無料プランでは、作れるプロジェクトの数に上限�
 |---|---|
 | `supabase/schema.sql` | `create schema seminar_vote;` から始め、すべての名前に `seminar_vote.` を付けた。権限は service_role にだけ渡す。 |
 | `supabase/seed.sql` / `supabase/verify.sql` | すべて `seminar_vote.` 付きに変更。verify には権限の確認(テスト 14〜16)を追加。 |
-| `supabase/precheck.sql`(新規) | 実行前の確認用。読み取り専用で、変更は何もしない。 |
+| `supabase/precheck.sql`(新規) | 実行前の確認用。読み取り専用で、変更は何もしない。見るのは「`seminar_vote` が未使用か」と「必要なロール(`anon` / `authenticated` / `service_role`)があるか」の 2 点だけ。`public` など他のスキーマの中身は読まない。 |
 | `supabase/teardown.sql`(新規) | 後片づけ用。`drop schema seminar_vote cascade;` のみ。**今は実行しない。** |
 
 ### 権限の考え方
@@ -211,13 +211,24 @@ Supabase の無料プランでは、作れるプロジェクトの数に上限�
 ### リスクと対策
 | リスク | 対策 |
 |---|---|
-| 減量アプリの `public` を壊してしまう | すべての名前に `seminar_vote.` を付ける。広い範囲を指定する文は使わない。実行前に `precheck.sql` で目視確認する。実行前に使い捨ての DB で、`public` が一切変わらないことを確認済み。 |
-| `service_role` キーは「プロジェクト全体の万能キー」なので、漏れると減量アプリのデータにも届く | キーは `.env.local` と Vercel の環境変数にだけ置く。ブラウザ・Git・会話には出さない。コードでは `schema: 'seminar_vote'` を固定し、`public` を参照するコードは書かない。公開前(段階 10)に漏れがないか確認する。 |
+| 減量アプリの `public` を壊してしまう | すべての名前に `seminar_vote.` を付ける。広い範囲を指定する文は使わない。実行前に `precheck.sql` で「`seminar_vote` が未使用か」を確認する(`public` の中身は読まない)。実行前に使い捨ての DB で、`public` が一切変わらないことを確認済み。 |
+| 秘密キーは「プロジェクト全体に届くキー」なので、漏れると減量アプリのデータにも届く | キーは `.env.local` と Vercel の環境変数にだけ置く。ブラウザ・Git・会話には出さない。コードでは `schema: 'seminar_vote'` を固定し、`public` を参照するコードは書かない。公開前(段階 10)に漏れがないか確認する。詳しくは次の「キーの影響範囲」の表を参照。 |
 | コードでスキーマ指定を忘れると、同名の `public.members`(減量アプリ)を読んでしまう | 接続部品(`lib/supabase.ts`)で、スキーマを `seminar_vote` に固定する(次の「段階 3 での方針」を参照)。 |
 | Data API の設定を間違えて、減量アプリが動かなくなる | 「Exposed schemas」には `seminar_vote` を**追加するだけ**にして、既存の項目は消さない。変更前の画面をメモ(スクリーンショット)しておく。 |
 | 無料枠の容量・接続数を減量アプリと共有する | このアプリのデータは数十行で、10 人が 2〜3 秒おきに確認する程度。負荷は小さい。 |
 | 無料プランでは自動バックアップがない場合がある | 心配なら、実行前に減量アプリ側のデータを書き出しておく(するかどうかはあなたの判断)。 |
 | 使い終わったあとにデータが残る | `teardown.sql` で `seminar_vote` だけを丸ごと消せる。10/22 の後に、あなたの判断で実行する。 |
+
+### キーの影響範囲
+このアプリは、サーバー専用の秘密キー(新しい形式の `sb_secret_…` キー)を使う。環境変数の名前は `SUPABASE_SERVICE_ROLE_KEY` から **`SUPABASE_SECRET_KEY`** に変更した(`.env.local` と Vercel の両方で、この名前にそろえる)。
+
+| 項目 | 内容 |
+|---|---|
+| 専用の secret key を作っても権限は変わらない | 権限は `service_role` と同じ。**減量アプリの `public` にも届く。** 「専用のキー」にしても、アクセスできる範囲が狭くなるわけではない。 |
+| 範囲を守っているのは何か | キーではなく、**コードの書き方**。接続部品で `schema: 'seminar_vote'` を固定し、`public` を参照するコードを書かないこと。 |
+| 専用キーの利点 | **このアプリのキーだけを、10/22 の後に単独で削除できる。** 減量アプリが使っているキーには影響しない。 |
+| 削除するときの注意 | 削除は**取り消せない**。先に、「そのキーを使っている別のものが無い」「代わりのキーが不要である」ことを確認してから行う。 |
+| 扱い方 | `.env.local` と Vercel の環境変数にだけ置く。ブラウザ・Git・会話には出さない。 |
 
 ### Supabase の画面での手順(画面の名称は変更されることがある)
 実行前に、毎回私に声をかけてください(DB の変更にあたるため)。
@@ -226,8 +237,7 @@ Supabase の無料プランでは、作れるプロジェクトの数に上限�
    2. `supabase/precheck.sql` を全文コピーして貼り付け、「Run」を押す。
    3. 表を目で確認する。
       - `seminar_vote の状態` の行が「**未使用(OK)**」になっている。
-      - `schema` の行に `seminar_vote` が無い。
-      - `public のテーブル` の行は、減量アプリのテーブル。これらには何もしない。
+      - (`public` など他のスキーマの中身は、この確認では読まない。)
       - `ロール` の行に `anon` / `authenticated` / `service_role` の 3 つがある。
    4. 「【注意】すでに存在する」と出たら、ここで止まって教える。
 2. **schema(スキーマとテーブルを作る)**:「New query」→ `supabase/schema.sql` を貼り付けて「Run」。「Success. No rows returned」なら成功。
@@ -244,11 +254,16 @@ Supabase の無料プランでは、作れるプロジェクトの数に上限�
 - `db: { schema: 'seminar_vote' }`:何も指定しなくても `seminar_vote` の表を使うようにして、`public` を読む事故を防ぐ。
 - `auth: { persistSession: false }`:サーバー側で、ログイン状態を保存しない(キーだけで動かす)。
 
+**`sb_secret_` キーと `@supabase/supabase-js` の対応(ソースコードを読んで確認。Supabase にはまだ接続していない)**
+- インストール済みのバージョンは 2.117.3。`sb_secret_` / `sb_publishable_` を「新形式のキー」として認識するコードが入っている(未知の形式のときに出す警告は出ない)。
+- キーは `apikey` ヘッダーに入る。一方、ログイン中の利用者がいないとき、データベースへの通信では同じキーが `Authorization: Bearer` にも入る(Edge Functions だけは除外されている)。
+- この `Authorization` への扱いを Supabase のサーバーが受け付けるかは、ソースコードを読むだけでは分からない。接続して試すまでは「対応しているはず」で、確定ではない。段階 3 で、最小限の読み取り(`seminar_vote` の 1 テーブルの件数)で試し、エラーが出たら止まって原因を調べる。
+
 ### 確認方法
 (使い捨てのメモリ上の PostgreSQL「PGlite」で確認した。本物の Supabase ではまだ実行していない)
 - 減量アプリの `public` を模した DB(`members` と `votes` は、あえて同じ名前)に対して、`precheck` → `schema` → `seed` → `verify` を順に実行した。
   - 実行のたびに、`public` のテーブル・列・行・権限・RLS・ポリシー・関数が**まったく変わっていない**ことを確認した。
-  - `precheck.sql` は「読み取り専用の取引」の中でも成功した(書き込みが無い証拠)。
+  - `precheck.sql` は「読み取り専用の取引」の中でも成功した(書き込みが無い証拠)。表示されるのは「`seminar_vote` の状態」と「ロール」の行だけで、`public` の情報は出ない。
   - `public` が空の DB に実行すると、`public` には何も作られなかった。
   - `schema.sql` の 2 回目は `schema "seminar_vote" already exists` で止まり、何も変わらなかった。
   - `teardown.sql` を実行すると `seminar_vote` だけが消え、`public` は変わらなかった。
