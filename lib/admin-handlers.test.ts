@@ -11,6 +11,7 @@ import {
   guardAdmin,
   handleLogin,
   handleLogout,
+  handleQr,
   handleReset,
   handleReveal,
   handleStatus,
@@ -416,5 +417,40 @@ describe("ログイン済みの管理 API", () => {
       expect(text).not.toContain("SECRET-DB-DETAIL");
       expect(text).not.toContain("postgres://");
     }
+  });
+});
+
+// ---------- QR 用の名簿(トークンを含む) ----------
+describe("handleQr(QR 用の名簿)", () => {
+  const members = [
+    { id: "S001", name: "豊臣秀長", nameEn: "Toyotomi Hidenaga", token: "t".repeat(64) },
+    { id: "K0002", name: "豊臣秀吉", nameEn: "Toyotomi Hideyoshi", token: "u".repeat(64) },
+    { id: "K0001", name: "織田信長", nameEn: "Oda Nobunaga", token: "v".repeat(64) },
+  ];
+
+  it("ログインしていなければ 401。名簿を取りにも行かない(トークンは返さない)", async () => {
+    const { deps } = makeDeps();
+    const list = vi.fn(async () => members);
+    const res = await handleQr(get("/api/admin/qr"), deps, list);
+    expect(res.status).toBe(401);
+    expect(list).not.toHaveBeenCalled();
+    expect(JSON.stringify(await json(res))).not.toContain("tttt");
+  });
+
+  it("ログイン済みなら、名簿順(S001 は最後)で返す。キャッシュさせない", async () => {
+    const { deps } = makeDeps();
+    const res = await handleQr(get("/api/admin/qr", { cookie: cookieFor() }), deps, async () => members);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toContain("no-store");
+    const body = (await json(res)) as { members: { id: string }[] };
+    expect(body.members.map((m) => m.id)).toEqual(["K0001", "K0002", "S001"]);
+  });
+
+  it("名簿の取得に失敗しても、内容を出さず 500", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const { deps } = makeDeps();
+    const res = await handleQr(get("/api/admin/qr", { cookie: cookieFor() }), deps, async () => { throw new Error("SECRET-DB-DETAIL"); });
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await json(res))).not.toContain("SECRET-DB-DETAIL");
   });
 });

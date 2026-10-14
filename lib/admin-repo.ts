@@ -8,6 +8,20 @@ import { getSupabase, type SeminarVoteClient } from "./supabase";
 const fail = (what: string, error: { code?: string; message: string }) =>
   new Error(`${what}: ${error.code ?? ""} ${error.message}`);
 
+export type QrMember = { id: string; name: string; nameEn: string; token: string };
+
+/** QR コード用の名簿(トークンを含む)。管理者だけが呼べる経路からだけ使う。 */
+export async function listMembersForQr(client: SeminarVoteClient = getSupabase()): Promise<QrMember[]> {
+  const { data, error } = await client.from("members").select("id, name, name_en, token");
+  if (error) throw fail("members 取得(QR)", error);
+  return (data ?? []).map((m: { id: string; name: string; name_en: string; token: string }) => ({
+    id: m.id,
+    name: m.name,
+    nameEn: m.name_en,
+    token: m.token,
+  }));
+}
+
 export function createSupabaseAdminRepo(client: SeminarVoteClient = getSupabase()): AdminRepo {
   return {
     async listVideos(): Promise<AdminVideoRow[]> {

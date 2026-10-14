@@ -15,7 +15,8 @@ import {
   serializeClearedSessionCookie,
   serializeSessionCookie,
 } from "./admin-auth";
-import { createSupabaseAdminRepo } from "./admin-repo";
+import { compareRosterOrder } from "./admin-rules";
+import { createSupabaseAdminRepo, listMembersForQr, type QrMember } from "./admin-repo";
 import {
   changeRevealStage,
   changeVideoStatus,
@@ -170,6 +171,22 @@ export async function handleVideos(request: Request, deps: AdminDeps): Promise<R
     const denied = guardAdmin(request, deps, { checkOrigin: true });
     if (denied) return denied;
     return respondService(await changeVideoStatus(deps.getRepo(), await readJson(request)));
+  } catch (error) {
+    return unexpected(error);
+  }
+}
+
+// ---------- QR コード用の名簿(トークンを含む。管理者だけ) ----------
+export async function handleQr(
+  request: Request,
+  deps: AdminDeps,
+  listMembers: () => Promise<QrMember[]> = () => listMembersForQr(),
+): Promise<Response> {
+  try {
+    const denied = guardAdmin(request, deps, { checkOrigin: false }); // 読むだけの GET
+    if (denied) return denied;
+    const members = [...(await listMembers())].sort((a, b) => compareRosterOrder(a.id, b.id));
+    return respond(200, { ok: true, members });
   } catch (error) {
     return unexpected(error);
   }
