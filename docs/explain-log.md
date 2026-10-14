@@ -1099,4 +1099,12 @@ npx next build
 
 ---
 
-TODO:公開前(段階10)に npm audit の高severity 5件を確認する(npm audit fix --force は使わない)
+
+## 段階10:公開(GitHub と Vercel・急ぎモード・短い記録)
+- **作ったもの**:GitHub の Private リポジトリへ push(ブランチ名は main)。Vercel に新規プロジェクト seminar-vote-app を作り、地域は東京(hnd1)。本番ドメインは https://seminar-vote-app.vercel.app 。
+- **使った技術**:Git / GitHub(ソースの保管)、Vercel(公開先)、vercel.json(地域とフレームワークの指定)。
+- **環境変数**:SUPABASE_URL / SUPABASE_SECRET_KEY / ADMIN_PASSWORD を Production だけに設定。値は .env.local から標準入力で直接渡し、画面には出していない。
+- **つまずき**:最初のデプロイは全ページ 404。原因は、フレームワークが Next.js と認識されなかったこと。vercel.json に "framework": "nextjs" を足して解決。
+- **公開前の安全確認**:履歴に実キー・パスワードは 0 件(検出はテストのダミー値と区切り線だけ)。npm audit の本番依存は high 0 件(dev 側の 5 件は許容)。
+- **公開後の確認**:各画面が応答(投票・管理・結果・QR。QR と管理 API はログインなしで 401)。本物の DB で 18 件確認(ログイン、開始、投票、上書き、自己投票 403、結果の平均点、発表段階 0 で名前なし)し、全員 pending・投票 0 件・発表段階 0 に戻した。
+- **初出の用語**:デプロイ(アプリを公開先に置くこと)/ 本番ドメイン(デプロイごとの一時 URL ではなく、いつも同じ公開アドレス)/ Sensitive(設定後に値を読み出せなくする環境変数の種類)。
