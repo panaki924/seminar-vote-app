@@ -144,6 +144,8 @@ npm test
 なお「投票を受け付けるのは status='open' の動画だけ」は、DB ではなく API(段階4)で守る。
 
 ### Supabase の画面での実行手順(画面の名称は変更されることがある)
+> ※この手順は、次の「段階2(方式変更)」の節で置き換えた。新しいプロジェクトは作らず、既存プロジェクトの中に専用スキーマを作る。実際に行うのは、次の節の手順のほう。
+
 1. ブラウザで supabase.com を開き、「Start your project」からサインイン(GitHub またはメール)。
 2. 「New project」を押す。Organization を選び、Name に `seminar-vote` などを入力。
 3. 「Database Password」は「Generate a password」で作り、パスワード管理ツールに保存する(会話には貼らない)。
@@ -178,6 +180,91 @@ npm test
 - **トランザクション(begin / commit / rollback)**:複数の操作を「全部成功か、全部なかったことか」にまとめる仕組み。rollback は取り消し。
 - **gen_random_uuid()**:推測できないランダムな ID を作る DB の関数。
 - **シード(seed)**:最初に入れておく初期データ。
+
+---
+
+## 段階2(方式変更):既存プロジェクトの中に専用スキーマ seminar_vote を作る【まだ実行していない】
+
+### 変えた理由(無料枠の制限)
+Supabase の無料プランでは、作れるプロジェクトの数に上限がある。その枠がすでに埋まっていて、このアプリのために新しいプロジェクトを作れない。
+そこで、すでにあるプロジェクト(減量アプリが使っている)の中に、このアプリ専用の「引き出し」(スキーマ)`seminar_vote` を作る方式にした。
+
+### スキーマとは(たとえ話)
+1 つのデータベースを「大きな戸棚」とすると、スキーマは「引き出し」。テーブル(表)は引き出しの中の書類にあたる。
+減量アプリの書類は `public` という引き出しに入っている。このアプリの書類は `seminar_vote` という別の引き出しに入れる。
+引き出しが違えば、同じ名前の書類(たとえば `members`)があっても混ざらない。
+
+### 変えたもの
+| ファイル | 変更内容 |
+|---|---|
+| `supabase/schema.sql` | `create schema seminar_vote;` から始め、すべての名前に `seminar_vote.` を付けた。権限は service_role にだけ渡す。 |
+| `supabase/seed.sql` / `supabase/verify.sql` | すべて `seminar_vote.` 付きに変更。verify には権限の確認(テスト 14〜16)を追加。 |
+| `supabase/precheck.sql`(新規) | 実行前の確認用。読み取り専用で、変更は何もしない。 |
+| `supabase/teardown.sql`(新規) | 後片づけ用。`drop schema seminar_vote cascade;` のみ。**今は実行しない。** |
+
+### 権限の考え方
+- **service_role にだけ**、スキーマへの入室(usage)と、4 つのテーブルの読む・追加・更新・削除(select / insert / update / delete)を渡す。
+- **anon・authenticated・public(全員を表す特別な名前)には何も渡さない**。RLS を有効にし、ポリシーも作らないので、二重に鍵がかかる。
+- 権限の文は、`seminar_vote` のスキーマ名とテーブル名を 1 つずつ書いて指定した。「public スキーマのテーブル全部」のような広い範囲の文は 1 つも使っていない(検索でも確認済み)。
+- ※ `from public, anon, authenticated` の `public` は「全員」を表す特別な名前で、`public` スキーマ(減量アプリの引き出し)とは別物。
+
+### リスクと対策
+| リスク | 対策 |
+|---|---|
+| 減量アプリの `public` を壊してしまう | すべての名前に `seminar_vote.` を付ける。広い範囲を指定する文は使わない。実行前に `precheck.sql` で目視確認する。実行前に使い捨ての DB で、`public` が一切変わらないことを確認済み。 |
+| `service_role` キーは「プロジェクト全体の万能キー」なので、漏れると減量アプリのデータにも届く | キーは `.env.local` と Vercel の環境変数にだけ置く。ブラウザ・Git・会話には出さない。コードでは `schema: 'seminar_vote'` を固定し、`public` を参照するコードは書かない。公開前(段階 10)に漏れがないか確認する。 |
+| コードでスキーマ指定を忘れると、同名の `public.members`(減量アプリ)を読んでしまう | 接続部品(`lib/supabase.ts`)で、スキーマを `seminar_vote` に固定する(次の「段階 3 での方針」を参照)。 |
+| Data API の設定を間違えて、減量アプリが動かなくなる | 「Exposed schemas」には `seminar_vote` を**追加するだけ**にして、既存の項目は消さない。変更前の画面をメモ(スクリーンショット)しておく。 |
+| 無料枠の容量・接続数を減量アプリと共有する | このアプリのデータは数十行で、10 人が 2〜3 秒おきに確認する程度。負荷は小さい。 |
+| 無料プランでは自動バックアップがない場合がある | 心配なら、実行前に減量アプリ側のデータを書き出しておく(するかどうかはあなたの判断)。 |
+| 使い終わったあとにデータが残る | `teardown.sql` で `seminar_vote` だけを丸ごと消せる。10/22 の後に、あなたの判断で実行する。 |
+
+### Supabase の画面での手順(画面の名称は変更されることがある)
+実行前に、毎回私に声をかけてください(DB の変更にあたるため)。
+1. **precheck(確認)**
+   1. 既存のプロジェクトを開く。左のメニューの「SQL Editor」(`>_` のアイコン)→「New query」。
+   2. `supabase/precheck.sql` を全文コピーして貼り付け、「Run」を押す。
+   3. 表を目で確認する。
+      - `seminar_vote の状態` の行が「**未使用(OK)**」になっている。
+      - `schema` の行に `seminar_vote` が無い。
+      - `public のテーブル` の行は、減量アプリのテーブル。これらには何もしない。
+      - `ロール` の行に `anon` / `authenticated` / `service_role` の 3 つがある。
+   4. 「【注意】すでに存在する」と出たら、ここで止まって教える。
+2. **schema(スキーマとテーブルを作る)**:「New query」→ `supabase/schema.sql` を貼り付けて「Run」。「Success. No rows returned」なら成功。
+3. **seed(初期データを入れる)**:「New query」→ `supabase/seed.sql` を貼り付けて「Run」。結果の表に `members=10, videos=10, min_token_length=64, reveal_stage=0` と出れば成功。
+4. **verify(検証)**:「New query」→ `supabase/verify.sql` を貼り付けて「Run」。赤いエラーが出ず、最後の表で `verify_leftover=0, votes=0` なら合格。`NG:` が出たら不合格。
+5. **Data API に seminar_vote を公開する**(アプリのサーバーが `seminar_vote` を読み書きするために必要)
+   1. 左下の「Project Settings」(歯車)→「Data API」(古い画面では「API」)を開く。
+   2. 「Exposed schemas」の欄を見つける。**今ある項目(`public` など)は消さない。**変更前の画面をメモしておく。
+   3. その欄に `seminar_vote` を**追加**して、「Save」を押す。
+6. エラーで止まったときは、先に `rollback;` を 1 行だけ実行してから、原因を直して再実行する(前の節の【注意】を参照)。
+
+### 段階 3 での方針(接続部品 `lib/supabase.ts`)
+段階 3 で作る接続部品では、次の 2 点を必ず指定する。
+- `db: { schema: 'seminar_vote' }`:何も指定しなくても `seminar_vote` の表を使うようにして、`public` を読む事故を防ぐ。
+- `auth: { persistSession: false }`:サーバー側で、ログイン状態を保存しない(キーだけで動かす)。
+
+### 確認方法
+(使い捨てのメモリ上の PostgreSQL「PGlite」で確認した。本物の Supabase ではまだ実行していない)
+- 減量アプリの `public` を模した DB(`members` と `votes` は、あえて同じ名前)に対して、`precheck` → `schema` → `seed` → `verify` を順に実行した。
+  - 実行のたびに、`public` のテーブル・列・行・権限・RLS・ポリシー・関数が**まったく変わっていない**ことを確認した。
+  - `precheck.sql` は「読み取り専用の取引」の中でも成功した(書き込みが無い証拠)。
+  - `public` が空の DB に実行すると、`public` には何も作られなかった。
+  - `schema.sql` の 2 回目は `schema "seminar_vote" already exists` で止まり、何も変わらなかった。
+  - `teardown.sql` を実行すると `seminar_vote` だけが消え、`public` は変わらなかった。
+- 制約や権限をわざと崩すと、`verify.sql` が `NG:` で止まることを 8 パターンで確認した。
+  - 自己投票の CHECK を外す / open の一意インデックスを外す / RLS を無効のままにする
+  - anon に読み取り権限を渡す / 全員(PUBLIC)にスキーマの利用権限を渡す / authenticated に書き込み権限を渡す
+  - service_role への権限を渡し忘れる / トークンの CHECK を外す
+
+### 初出の専門用語と一言解説
+- **スキーマ(schema)**:データベースの中の「引き出し」。同じ名前のテーブルでも、引き出しが違えば別物。
+- **public スキーマ**:Supabase が最初から用意している標準の引き出し。減量アプリはここを使っている。
+- **PUBLIC(全員)**:権限の世界での「誰でも」を表す特別な名前。`public` スキーマとは別物。
+- **grant / revoke**:権限を渡す / 取り上げる命令。
+- **Data API / Exposed schemas**:アプリのサーバーが Supabase の表にアクセスするための窓口と、そこから見せてよい引き出しの一覧。
+- **drop schema ... cascade**:引き出しを、中のテーブルごと完全に削除する命令。元に戻せない。
+- **読み取り専用(read only)**:見るだけで、書き込みができない状態。precheck がこれにあたる。
 
 ---
 

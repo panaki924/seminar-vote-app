@@ -25,6 +25,7 @@ open にできる動画は同時に1本だけ。この制約はDB側(部分ユ�
 # 技術構成
 - Next.js(App Router, TypeScript)+ Tailwind CSS + Vitest
 - Supabase(PostgreSQL)。ブラウザからDBへ直接アクセスしない。すべてサーバー側(Route Handler)を経由する。
+- DBは、既存のSupabaseプロジェクト(減量アプリ側)の中の専用スキーマ seminar_vote を使う。
 - 全テーブルでRLSを有効にし、ポリシーは作らない(公開キーでは読み書きできない状態にする)。
 - 環境変数:SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY / ADMIN_PASSWORD。.env.local に置き、Gitに含めない(.gitignoreを確認する)。
 - Vercel にデプロイする。
@@ -66,4 +67,6 @@ app_state(id=1, reveal_stage 0〜3)
 - 次の操作は、実行前に必ず私の承認を取る:
   ファイル・データの削除、DBの作成/変更/初期化、`git push`、Vercelへのデプロイ、環境変数の設定。
 - 環境は Windows の cmd。PowerShell は使わない。コマンドは cmd でコピペ実行できる形で示す。
+- seminar_vote 以外のスキーマ(特に public)は、読み取りも含めて触らない。SQLを書くときは必ず seminar_vote. を付ける。
+- Supabaseの秘密キーは、このプロジェクトで使う専用のキーを使う(既存アプリのキーと共有しない)。
 - 分からない前提は、勝手に決めずに質問する。
